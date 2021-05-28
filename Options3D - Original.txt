@@ -1,0 +1,23 @@
+// Nesse arquivo, indique os dados para configurar
+// o exemplo que você pretende simular.
+
+// Caso:
+10
+
+// Malha (com extensão):
+hollowcube_2.msh
+
+// Tipo do Peso para Interpolação:
+LPEW2
+
+// Forma de cálculo dos Pesos:
+compexp
+
+// Precisa de Limitadora (escreva 'sim', se precisar):
+sim
+
+// Arquivo de Fraturas (coloque o nome, se já tiver um; 
+// escreva 'novo', se quiser criar um novo a partir dos
+// parâmetros em 'ADFNE1.5_Parameters.xlsx'; escreva 
+// 'nenhum' se não quiser usar nenhum arquivo de fraturas):
+novo
