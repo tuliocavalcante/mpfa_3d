@@ -2,7 +2,10 @@ import numpy as np
 from tpfa import tpfaScheme
 from mdot import mdot
 from scipy.sparse import csc_matrix
+from scipy.sparse import eye
+from scipy.sparse import vstack
 from scipy.sparse.linalg import spsolve
+from scipy.linalg import inv
 
 class mpfa3dSchemecorea(tpfaScheme):
 
@@ -228,19 +231,23 @@ class mpfa3dSchemecorea(tpfaScheme):
 
     def weights(self):
 
+        permeabilities = self.vol_permeabilities()
         # elements surrounding nodes:
         esurn = self.mesh.nodes.bridge_adjacencies(self.mesh.nodes.all, 0, 3)
         # faces surrounding nodes:
         fsurn = self.mesh.nodes.bridge_adjacencies(self.mesh.nodes.all, 0, 2)
 
+        import pdb; pdb.set_trace()
+
         w = []; fw = []; node = 0
 
-        for i in esurn:
+        for node in range(len(esurn)):
 
-            Q = self.mesh.nodes.coords(node)
-            esurnode = esurn(node)
+            Q = self.mesh.nodes.coords[node]
+
+            esurnode = esurn[node]
             nesurnode = len(esurnode)
-            fsurnode = fsurn(node)
+            fsurnode = fsurn[node]
             nfsurnode = len(fsurnode)
             noI, noJ, noK, ocI, ocJ, ocK, ofI, ofJ, ofK = self.calc_nos_viz(i, node)
 
@@ -252,101 +259,96 @@ class mpfa3dSchemecorea(tpfaScheme):
             nfboundsurnode = len(fboundsurnode)
 
             # prepare the matrices
-            M1 = sparse(nesurnode, 3 * nesurnode + 1)
+            M1 = csc_matrix(nesurnode, 3 * nesurnode + 1)
             for j in esurnode:
                 k = self.mesh.volumes.center(j)
                 M1[j, 3 * (j - 1) + 1:3 * j] = k - Q
-                M1[j, end] = 1
+                M1[j, 3 * nesurnode + 1] = 1
 
-            M2 = csc_matrix((nfintsurnode, 3 * nesurnode + 1))
-            M3 = csc_matrix(nfintsurnode, 3 * nesurnode + 1))
-            M4 = csc_matrix(nfintsurnode + nfboundsurnode, 3 * nesurnode + 1))
+            M2 = csc_matrix(nfintsurnode, 3 * nesurnode + 1)
+            M3 = csc_matrix(nfintsurnode, 3 * nesurnode + 1)
+            M4 = csc_matrix(nfintsurnode + nfboundsurnode, 3 * nesurnode + 1)
             N1 = eye(nesurnode)
             N2 = csc_matrix((2 * nfintsurnode, nesurnode))
             N3 = csc_matrix((nfintsurnode + nfboundsurnode, nesurnode))
-            N = [N1;
-            N2;
-            N3];
+            N = vstack(N1, N2, N3)
 
             # internal faces loop
             for j in range(nfintsurnode):
-            # take the face normal and the face area for the j-th face sorrounding the node
+                # take the face normal and the face area for the j-th face sorrounding the node
                 fi = fintsurnode(j); area, N = self.calc_area(fi); veri = self.calc_veri(fi, N)
-            # takes upstream and downstream elements
-            montelem = self.mesh.volumes(self.mesh.faces.bridge_adjacencies(fi, 2, 3)[:, 0])
-            juselem = self.mesh.volumes(self.mesh.faces.bridge_adjacencies(fi, 2, 3)[:, 1])
-            montelem[veri], juselem[veri] = juselem[veri], montelem[veri]
-            # take the face nodes
-            facenodes = self.mesh.nodes(self.mesh.faces.bridge_adjacencies(fi, 0, 0))
-            nou = np.setdiff1d(facenodes, node)
-            t1 = self.mesh.nodes.coords(nou[1]) - Q;
-            t2 = self.mesh.nodes.coords(nou[2]) - Q
-            # verify the normal orientation
-            nprov = np.cross(t1, t2);
-            n = nprov / np.linalg.norm(nprov)
-            nface = self.mesh.faces.internal.normal(fi);
-            nface = nface / np.linalg.norm(nface);
-            if np.round(np.linalg.norm(n - nface)) != 0
-            testelem = juselem; juselem = montelem; montelem = testelem;
-            # permeabilities of the elements sharing that face
-            Km = permeabilities[montelem]; Kj = permeabilities[juselem];
-            # find their (the elements sharing the face) position in esurnode
-            posm = np.where(esurnode == montelem); posj = np.where(esurnode == juselem);
-            # make the matrix assembly
-            M2[j, 3 * (posm-1)+1:3 * posm] = t1;
-            M2[j, 3 * (posj - 1) + 1:3 * posj] = -t1;
-            M3[j, 3 * (posm - 1) + 1:3 * posm] = t2;
-            M3[j, 3 * (posj - 1) + 1:3 * posj] = -t2;
-            M4[j, 3 * (posm - 1) + 1:3 * posm] = n * Km;
-            M4[j, 3 * (posj - 1) + 1:3 * posj] = -n * Kj;
+                # takes upstream and downstream elements
+                montelem = self.mesh.volumes(self.mesh.faces.bridge_adjacencies(fi, 2, 3)[:, 0])
+                juselem = self.mesh.volumes(self.mesh.faces.bridge_adjacencies(fi, 2, 3)[:, 1])
+                montelem[veri], juselem[veri] = juselem[veri], montelem[veri]
+                # take the face nodes
+                facenodes = self.mesh.nodes(self.mesh.faces.bridge_adjacencies(fi, 0, 0))
+                nou = np.setdiff1d(facenodes, node)
+                t1 = self.mesh.nodes.coords(nou[1]) - Q
+                t2 = self.mesh.nodes.coords(nou[2]) - Q
+                # verify the normal orientation
+                nprov = np.cross(t1, t2)
+                n = nprov / np.linalg.norm(nprov)
+                nface = self.mesh.faces.internal.normal(fi)
+                nface = nface / np.linalg.norm(nface)
+                if np.round(np.linalg.norm(n - nface)) != 0:
+                    testelem = juselem; juselem = montelem; montelem = testelem
+                # permeabilities of the elements sharing that face
+                Km = permeabilities[montelem]; Kj = permeabilities[juselem]
+                # find their (the elements sharing the face) position in esurnode
+                posm = np.where(esurnode == montelem); posj = np.where(esurnode == juselem)
+                # make the matrix assembly
+                M2[j, 3 * (posm-1)+1:3 * posm] = t1
+                M2[j, 3 * (posj - 1) + 1:3 * posj] = -t1
+                M3[j, 3 * (posm - 1) + 1:3 * posm] = t2
+                M3[j, 3 * (posj - 1) + 1:3 * posj] = -t2
+                M4[j, 3 * (posm - 1) + 1:3 * posm] = n * Km
+                M4[j, 3 * (posj - 1) + 1:3 * posj] = -n * Kj
 
+            F = csc_matrix(nfintsurnode + nfboundsurnode, 1)
+            L3 = csc_matrix(nfintsurnode + nfboundsurnode, nfboundsurnode)
             # boundary faces loop
-            for j in range(nfboundsurnode)
-            # take the face normal and the face area for the j-th face sorrounding the node
-            fb = fboundsurnode(j); area, N = self.calc_area(fb); veri = self.calc_veri(fb, N)
-            # takes upstream element
-            montelem = self.mesh.volumes(self.mesh.faces.bridge_adjacencies(fb, 2, 3)[:,
-            0])
-            # take the face nodes
-            facenodes = self.mesh.nodes(self.mesh.faces.bridge_adjacencies(fi, 0, 0))
-            nou = np.setdiff1d(facenodes, node)
-            t1 = self.mesh.nodes.coords(nou[1]) - Q;
-            t2 = self.mesh.nodes.coords(nou[2]) - Q;
-            # verify the normal orientation
-            nprov = np.cross(t1, t2);
-            n = nprov / np.linalg.norm(nprov)
-            nface = self.mesh.faces.boundary.normal(fb);
-            nface = nface / np.linalg.norm(nface);
-            if np.round(np.linalg.norm(n - nface)) != 0
-            n = nface;
-            # permeabilities of the elements sharing that face
-            Km = permeabilities[montelem];
-            # find their (the elements sharing the face) position in esurnode
-            posm = np.where(esurnode == montelem); posj = np.where(esurnode == juselem);
-            # make the matrix assembly
-            M4[j+nfintsurnode, 3 * (posm-1)+1:3 * posm] = n * Km;
-            # TEM QUE PEGAR O FLUXO PRESCRITO NA FACE QUE ESTÁ SENDO AVALIADA E COLOCAR
-            # NA VARIÁVEL 'vflux'
-            # --------------------------------------------------------------
-            F[j, 1] = -vflux;
-            L3[j + nfintsurnode, j] = 1;
-            # --------------------------------------------------------------
+            for j in range(nfboundsurnode):
+                # take the face normal and the face area for the j-th face sorrounding the node
+                fb = fboundsurnode(j); area, N = self.calc_area(fb); veri = self.calc_veri(fb, N)
+                # takes upstream element
+                montelem = self.mesh.volumes(self.mesh.faces.bridge_adjacencies(fb, 2, 3)[:, 0])
+                # take the face nodes
+                facenodes = self.mesh.nodes(self.mesh.faces.bridge_adjacencies(fi, 0, 0))
+                nou = np.setdiff1d(facenodes, node)
+                t1 = self.mesh.nodes.coords(nou[1]) - Q
+                t2 = self.mesh.nodes.coords(nou[2]) - Q
+                # verify the normal orientation
+                nprov = np.cross(t1, t2)
+                n = nprov / np.linalg.norm(nprov)
+                nface = self.mesh.faces.boundary.normal(fb)
+                nface = nface / np.linalg.norm(nface)
+                if np.round(np.linalg.norm(n - nface)) != 0:
+                    n = nface
+                # permeabilities of the elements sharing that face
+                Km = permeabilities[montelem]
+                # find their (the elements sharing the face) position in esurnode
+                posm = np.where(esurnode == montelem); posj = np.where(esurnode == juselem)
+                # make the matrix assembly
+                M4[j+nfintsurnode, 3 * (posm-1)+1:3 * posm] = n * Km
+                # TEM QUE PEGAR O FLUXO PRESCRITO NA FACE QUE ESTÁ SENDO AVALIADA E COLOCAR
+                # NA VARIÁVEL 'vflux'
+                # --------------------------------------------------------------
+                F[j, 1] = -self.neumann[j]
+                L3[j + nfintsurnode, j] = 1
+                # --------------------------------------------------------------
 
-            L1 = sparse(nesurnode, size(L3, 2));
-            L2 = sparse(2 * nfintsurnode, size(L3, 2));
+            L1 = csc_matrix(nesurnode, len(L3, 2))
+            L2 = csc_matrix(2 * nfintsurnode, len(L3, 2))
 
-            M = [M1;
-            M2;
-            M3;
-            M4]; L = [L1;
-            L2;
-            L3]; e = zeros(1, 3 * nesurnode + 1);
-            e(end) = 1;
+            M = vstack(M1, M2, M3, M4)
+            L = vstack(L1, L2, L3)
+            e = csc_matrix(1, 3 * nesurnode + 1); e[3 * nesurnode + 1] = 1
 
-            Mt = M.transpose();
+            Mt = M.transpose()
 
-            W = e * inv(Mt * M) * (Mt * N);
-            FW = e * inv(Mt * M) * (Mt * L * F);
+            W = e * inv(Mt * M) * (Mt * N)
+            FW = e * inv(Mt * M) * (Mt * L * F)
 
             w.append(W)
 
